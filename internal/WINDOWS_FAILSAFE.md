@@ -1,4 +1,4 @@
-# Windows fail-safe для BatyaVPN
+# Реализация обхода белых списков на Windows 11: fail-safe
 
 Этот документ фиксирует подтверждённый контекст Windows-клиента FreeTurn/WireGuard. Он не содержит ссылок VK, токенов CAPTCHA, ключей WireGuard, `obf-key` или приватной конфигурации.
 
@@ -74,10 +74,10 @@ ON
 
 | Файл | Роль |
 |---|---|
-| [`../windows/on.ps1`](../windows/on.ps1) | Двухэтапный запуск, проверки, handshake и auto-off |
-| [`../windows/off.ps1`](../windows/off.ps1) | Идемпотентный fail-safe OFF |
-| [`../windows/install.ps1`](../windows/install.ps1) | Проверка зависимостей, установка скриптов и ярлыков |
-| [`../windows/README.md`](../windows/README.md) | Пользовательская инструкция подключения |
+| [`../windows-whitelist-bypass/on.ps1`](../windows-whitelist-bypass/on.ps1) | Двухэтапный запуск, проверки, handshake и auto-off |
+| [`../windows-whitelist-bypass/off.ps1`](../windows-whitelist-bypass/off.ps1) | Идемпотентный fail-safe OFF |
+| [`../windows-whitelist-bypass/install.ps1`](../windows-whitelist-bypass/install.ps1) | Проверка зависимостей, установка скриптов и ярлыков |
+| [`../windows-whitelist-bypass/README.md`](../windows-whitelist-bypass/README.md) | Пользовательская инструкция подключения |
 
 Развёрнутые файлы:
 
