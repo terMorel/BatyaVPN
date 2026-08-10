@@ -1,4 +1,4 @@
-# BatyaVPN для Windows 11
+# Обход белых списков на Windows 11
 
 Этот каталог содержит fail-safe управление клиентской цепочкой:
 
@@ -35,7 +35,7 @@
 
 ## Установка
 
-Откройте PowerShell в каталоге `windows/` и выполните:
+Откройте PowerShell в каталоге `windows-whitelist-bypass/` и выполните:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1

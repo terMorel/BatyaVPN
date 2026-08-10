@@ -77,4 +77,4 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Installation finished, but BatyaVPN did not reach the safe OFF state.'
 }
 
-Write-Host 'BatyaVPN Windows fail-safe installed. Current state: OFF.' -ForegroundColor Green
+Write-Host 'BatyaVPN Windows whitelist-bypass fail-safe installed. Current state: OFF.' -ForegroundColor Green

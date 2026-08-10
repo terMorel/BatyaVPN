@@ -9,13 +9,13 @@
 | Панель обычного VPN | Исходный код HyBoard, deploy-скрипты, тесты и технический README компонента | [`panel/`](panel/) |
 | Внутренняя документация | Контекст для Codex/исполнителя: baseline, диагностика, эксплуатация, ограничения и disaster recovery | [`internal/`](internal/) |
 | Методичка по белым спискам | Тексты для человека, который хочет понять реализованную схему FreeTurn/VK TURN + WireGuard | [`methodology/`](methodology/) |
-| Клиент Windows | Fail-safe ON/OFF, установщик ярлыков и инструкция подключения ноутбука | [`windows/`](windows/) |
+| Обход белых списков на Windows 11 | Рабочая fail-safe реализация FreeTurn/WireGuard: ON/OFF, установщик и инструкция подключения | [`windows-whitelist-bypass/`](windows-whitelist-bypass/) |
 
 ```text
 BatyaVPN/
 ├── panel/        # код и документация панели обычного VPN
 ├── methodology/  # методичка против режима белых списков
-├── windows/      # fail-safe клиент FreeTurn/WireGuard для Windows 11
+├── windows-whitelist-bypass/  # реализация обхода белых списков на Windows 11
 └── internal/     # технический контекст для Codex
 ```
 
@@ -25,7 +25,7 @@ BatyaVPN/
 |---|---|---|---|
 | Hysteria2 | Основной повседневный VPN | Рабочий | Приоритетный контур; изменять с baseline и откатом |
 | VLESS + Reality | Резервный прямой транспорт через Xray/3x-ui | Вторичный/экспериментальный | Не затрагивать в задачах Hysteria2 |
-| Белые списки | Аварийный VPN через FreeTurn/VK TURN + WireGuard | Рабочий; Windows fail-safe внедрён | Не затрагивать без отдельной задачи |
+| Белые списки | Аварийный VPN через FreeTurn/VK TURN + WireGuard | Рабочий; реализация для Windows 11 внедрена | Не затрагивать без отдельной задачи |
 
 ## 1. Обычный VPN: нативный Hysteria2
 
@@ -75,11 +75,11 @@ BatyaVPN/
 
 Это не быстрый обычный VPN, а аварийный маршрут для режима строгих мобильных белых списков. Его назначение — сохранить базовый IP-доступ там, где прямой зарубежный VPN недоступен.
 
-### Windows 11: fail-safe ON/OFF
+### Реализация обхода белых списков на Windows 11
 
-Для ноутбука реализован отдельный контроллер [`windows/`](windows/). В обычном состоянии `WireGuard Tunnel: BatyaVPN-Laptop` остановлен и имеет `Disabled`; FreeTurn запускается первым, а WireGuard — только после завершённой VK CAPTCHA и явного подтверждения `READY`. После старта проверяются свежий handshake и HTTPS, а независимая задача Планировщика выполняет автоматический OFF. Любая ошибка также возвращает туннель в безопасное состояние.
+Для ноутбука реализован отдельный fail-safe контроллер [`windows-whitelist-bypass/`](windows-whitelist-bypass/). В обычном состоянии `WireGuard Tunnel: BatyaVPN-Laptop` остановлен и имеет `Disabled`; FreeTurn запускается первым, а WireGuard — только после завершённой VK CAPTCHA и явного подтверждения `READY`. После старта проверяются свежий handshake и HTTPS, а независимая задача Планировщика выполняет автоматический OFF. Любая ошибка также возвращает туннель в безопасное состояние.
 
-Пошаговая пользовательская инструкция: **[`windows/README.md`](windows/README.md)**. Подтверждённый технический контекст и причины fail-safe порядка: [`internal/WINDOWS_FAILSAFE.md`](internal/WINDOWS_FAILSAFE.md).
+Пошаговая пользовательская инструкция: **[`windows-whitelist-bypass/README.md`](windows-whitelist-bypass/README.md)**. Подтверждённый технический контекст и причины fail-safe порядка: [`internal/WINDOWS_FAILSAFE.md`](internal/WINDOWS_FAILSAFE.md).
 
 ### Методичка по белым спискам
 
