@@ -9,15 +9,16 @@ from hyboard.monitoring import HysteriaStatsClient, MonitoringService, TrafficRe
 
 
 class FakeBackend:
-    def __init__(self, *, active: bool = True, disk: float = 20):
+    def __init__(self, *, active: bool = True, disk: float = 20, tls: dict | None = None):
         self.active = active
         self.disk = disk
+        self.tls = tls
 
     def status(self) -> dict:
         return {"service": "active" if self.active else "inactive", "udp443": self.active}
 
     def monitoring(self) -> dict:
-        return {
+        result = {
             "cpu_percent": 8,
             "memory_percent": 25,
             "disk_percent": self.disk,
@@ -27,6 +28,9 @@ class FakeBackend:
             "udp_errors": 0,
             "services": {"hysteria": "active" if self.active else "inactive"},
         }
+        if self.tls is not None:
+            result["hysteria_tls"] = self.tls
+        return result
 
 
 class FakeStats:
@@ -98,3 +102,27 @@ def test_monitoring_alerts_are_persisted_and_deduplicated(tmp_path):
     assert len(notifier.messages) == 2
     persisted = db.monitoring_summary()
     assert {alert["key"] for alert in persisted["alerts"]} == keys
+
+
+@pytest.mark.parametrize(
+    ("tls", "expected_key"),
+    [
+        ({"valid": False, "error": "certificate expired"}, "hysteria_tls_invalid"),
+        (
+            {"valid": True, "seconds_remaining": 48 * 3600, "managed_symlink": True},
+            "hysteria_tls_expiring",
+        ),
+        (
+            {"valid": True, "seconds_remaining": 7 * 86400, "managed_symlink": False},
+            "hysteria_tls_unmanaged",
+        ),
+    ],
+)
+def test_monitoring_warns_about_hysteria_tls(tmp_path, tls, expected_key):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    service = MonitoringService(db, FakeBackend(tls=tls), FakeStats(), FakeNotifier())
+
+    snapshot = service.collect()
+
+    assert expected_key in {alert["key"] for alert in snapshot["alerts"]}
