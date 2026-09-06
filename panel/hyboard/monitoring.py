@@ -170,8 +170,11 @@ class MonitoringService:
         if traffic.available:
             self.db.record_traffic(traffic.users, now)
         if not system_error:
+            current_system = system
             self.db.record_system(system, now)
-            system = self.db.monitoring_summary()["system"]
+            system = self.db.monitoring_summary()["system"] or {}
+            if "hysteria_tls" in current_system:
+                system["hysteria_tls"] = current_system["hysteria_tls"]
         self.db.set_monitor_status("traffic", traffic.available, traffic.error or "", now)
         self.db.set_monitor_status(
             "system", not system_error, system_error or status_error, now
@@ -230,6 +233,40 @@ class MonitoringService:
                     "detail": "Сервис остановлен или UDP/443 не прослушивается.",
                 }
             )
+        tls = system.get("hysteria_tls")
+        if isinstance(tls, dict):
+            seconds_remaining = int(tls.get("seconds_remaining", 0))
+            if not tls.get("valid"):
+                alerts.append(
+                    {
+                        "key": "hysteria_tls_invalid",
+                        "severity": "critical",
+                        "title": "TLS-сертификат Hysteria2 недействителен",
+                        "detail": tls.get("error") or "Сертификат истёк или ещё не действует.",
+                    }
+                )
+            elif seconds_remaining <= 72 * 3600:
+                hours = max(0, seconds_remaining // 3600)
+                alerts.append(
+                    {
+                        "key": "hysteria_tls_expiring",
+                        "severity": "warning",
+                        "title": "TLS-сертификат Hysteria2 скоро истечёт",
+                        "detail": f"До окончания действия осталось около {hours} ч.",
+                    }
+                )
+            if tls.get("valid") and tls.get("managed_symlink") is False:
+                alerts.append(
+                    {
+                        "key": "hysteria_tls_unmanaged",
+                        "severity": "warning",
+                        "title": "Hysteria2 использует статическую копию сертификата",
+                        "detail": (
+                            "Путь TLS не является обновляемой ссылкой Certbot; "
+                            "следующее продление может не попасть в Hysteria2."
+                        ),
+                    }
+                )
         disk = float(system.get("disk_percent", 0))
         memory = float(system.get("memory_percent", 0))
         if disk >= 90:

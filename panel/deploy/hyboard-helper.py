@@ -9,13 +9,18 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 HY_ACCESS = Path("/usr/local/sbin/hy-access")
 USERS = Path("/etc/hysteria/users.json")
 ACCESS_DIR = Path("/root/hysteria-access")
+HYSTERIA_CONFIG = Path("/etc/hysteria/config.yaml")
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 URI = re.compile(r"hysteria2://[^\s`'\"]+")
+TLS_CERT = re.compile(
+    r"^\s+cert:\s*(?:\"([^\"]+)\"|'([^']+)'|([^#\s]+))\s*(?:#.*)?$"
+)
 ALLOWED = {"list", "status", "monitor", "add", "show", "rotate", "revoke"}
 
 
@@ -157,6 +162,67 @@ def udp_errors() -> int:
     return 0
 
 
+def hysteria_tls_status() -> dict:
+    """Return certificate health without exposing key or authentication data."""
+    try:
+        lines = HYSTERIA_CONFIG.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {"valid": False, "error": "Hysteria config cannot be read"}
+
+    in_tls = False
+    cert_value = ""
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line == line.lstrip():
+            in_tls = stripped == "tls:"
+            continue
+        if in_tls and (match := TLS_CERT.fullmatch(line)):
+            cert_value = next(value for value in match.groups() if value is not None)
+            break
+    if not cert_value:
+        return {"valid": False, "error": "Hysteria TLS certificate is not configured"}
+
+    cert_path = Path(cert_value)
+    if not cert_path.is_absolute():
+        cert_path = HYSTERIA_CONFIG.parent / cert_path
+    result = subprocess.run(
+        ["/usr/bin/openssl", "x509", "-in", str(cert_path), "-noout", "-enddate"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if result.returncode or not result.stdout.startswith("notAfter="):
+        return {
+            "path": str(cert_path),
+            "managed_symlink": cert_path.is_symlink(),
+            "valid": False,
+            "error": "Hysteria TLS certificate cannot be read",
+        }
+    try:
+        expires_at = datetime.strptime(
+            result.stdout.strip().removeprefix("notAfter="), "%b %d %H:%M:%S %Y %Z"
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return {
+            "path": str(cert_path),
+            "managed_symlink": cert_path.is_symlink(),
+            "valid": False,
+            "error": "Hysteria TLS expiry date cannot be parsed",
+        }
+    seconds_remaining = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+    return {
+        "path": str(cert_path),
+        "expires_at": expires_at.isoformat(),
+        "seconds_remaining": seconds_remaining,
+        "managed_symlink": cert_path.is_symlink(),
+        "valid": seconds_remaining > 0,
+    }
+
+
 def monitoring() -> None:
     disk = shutil.disk_usage("/")
     rx, tx = network_bytes()
@@ -174,6 +240,7 @@ def monitoring() -> None:
             "net_rx_bytes": rx,
             "net_tx_bytes": tx,
             "udp_errors": udp_errors(),
+            "hysteria_tls": hysteria_tls_status(),
             "services": {
                 "hysteria": service_state("hysteria-server.service", "hysteria.service"),
                 "hyboard": service_state("hyboard.service"),
