@@ -1,0 +1,12 @@
+[Unit]
+Description=Exercise the Hysteria2 data plane every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=hysteria-data-plane-check.service
+
+[Install]
+WantedBy=timers.target

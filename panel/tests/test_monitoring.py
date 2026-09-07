@@ -9,10 +9,20 @@ from hyboard.monitoring import HysteriaStatsClient, MonitoringService, TrafficRe
 
 
 class FakeBackend:
-    def __init__(self, *, active: bool = True, disk: float = 20, tls: dict | None = None):
+    def __init__(
+        self,
+        *,
+        active: bool = True,
+        disk: float = 20,
+        tls: dict | None = None,
+        certbot: str | None = None,
+        data_plane: dict | None = None,
+    ):
         self.active = active
         self.disk = disk
         self.tls = tls
+        self.certbot = certbot
+        self.data_plane = data_plane
 
     def status(self) -> dict:
         return {"service": "active" if self.active else "inactive", "udp443": self.active}
@@ -26,10 +36,16 @@ class FakeBackend:
             "net_rx_bytes": 1000,
             "net_tx_bytes": 2000,
             "udp_errors": 0,
-            "services": {"hysteria": "active" if self.active else "inactive"},
+            "services": {
+                "hysteria": "active" if self.active else "inactive",
+                "certbot": self.certbot,
+                "hysteria-healthcheck": "active" if self.data_plane else None,
+            },
         }
         if self.tls is not None:
             result["hysteria_tls"] = self.tls
+        if self.data_plane is not None:
+            result["hysteria_data_plane"] = self.data_plane
         return result
 
 
@@ -42,12 +58,17 @@ class FakeStats:
 
 
 class FakeNotifier:
-    def __init__(self):
+    def __init__(self, *, succeeds: bool = True):
         self.messages: list[str] = []
+        self.succeeds = succeeds
+
+    @property
+    def enabled(self) -> bool:
+        return True
 
     def send(self, message: str) -> bool:
         self.messages.append(message)
-        return True
+        return self.succeeds
 
 
 def test_traffic_totals_rates_and_counter_reset(tmp_path):
@@ -126,3 +147,93 @@ def test_monitoring_warns_about_hysteria_tls(tmp_path, tls, expected_key):
     snapshot = service.collect()
 
     assert expected_key in {alert["key"] for alert in snapshot["alerts"]}
+
+
+def test_monitoring_stays_silent_for_healthy_managed_tls(tmp_path):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    notifier = FakeNotifier()
+    tls = {"valid": True, "seconds_remaining": 49 * 3600, "managed_symlink": True}
+    service = MonitoringService(db, FakeBackend(tls=tls), FakeStats(), notifier)
+
+    snapshot = service.collect()
+
+    assert not {alert["key"] for alert in snapshot["alerts"]} & {
+        "hysteria_tls_invalid",
+        "hysteria_tls_expiring",
+        "hysteria_tls_unmanaged",
+    }
+    assert notifier.messages == []
+
+
+def test_monitoring_warns_when_certbot_timer_is_inactive(tmp_path):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    service = MonitoringService(
+        db,
+        FakeBackend(certbot="inactive"),
+        FakeStats(),
+        FakeNotifier(),
+    )
+
+    snapshot = service.collect()
+
+    assert "certbot_renewal_inactive" in {
+        alert["key"] for alert in snapshot["alerts"]
+    }
+
+
+def test_failed_telegram_delivery_is_retried(tmp_path):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    notifier = FakeNotifier(succeeds=False)
+    service = MonitoringService(
+        db,
+        FakeBackend(active=False),
+        FakeStats(),
+        notifier,
+    )
+
+    service.collect()
+    service.collect()
+
+    assert len(notifier.messages) == 2
+    assert db.alert_states() == {}
+
+
+def test_dynamic_alert_detail_does_not_repeat_notification(tmp_path):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    notifier = FakeNotifier()
+    backend = FakeBackend(disk=91)
+    service = MonitoringService(db, backend, FakeStats(), notifier)
+
+    service.collect()
+    backend.disk = 92
+    service.collect()
+
+    assert len(notifier.messages) == 1
+
+
+def test_monitoring_alerts_after_confirmed_data_plane_failures(tmp_path):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    service = MonitoringService(
+        db,
+        FakeBackend(
+            data_plane={
+                "healthy": False,
+                "consecutive_failures": 3,
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "detail": "tunnel check failed",
+            }
+        ),
+        FakeStats(),
+        FakeNotifier(),
+    )
+
+    snapshot = service.collect()
+
+    assert "hysteria_data_plane_failed" in {
+        alert["key"] for alert in snapshot["alerts"]
+    }

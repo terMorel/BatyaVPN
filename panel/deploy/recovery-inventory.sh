@@ -43,10 +43,12 @@ fi
 printf '\nService state\n'
 for unit in \
   hysteria-server.service \
+  hysteria-data-plane-check.timer \
   hyboard.service \
   hyboard-helper.service \
   hyboard-expire.timer \
   hyboard-monitor.timer \
+  snap.certbot.renew.timer \
   nginx.service; do
   service_state "$unit"
 done
@@ -68,9 +70,12 @@ for path in \
   /etc/hysteria/config.yaml \
   /etc/hysteria/users.json \
   /usr/local/sbin/hy-access \
+  /usr/local/sbin/hysteria-data-plane-check \
   /etc/hyboard/hyboard.env \
   /var/lib/hyboard/hyboard.db \
   /etc/systemd/system/hysteria-server.service \
+  /etc/systemd/system/hysteria-data-plane-check.service \
+  /etc/systemd/system/hysteria-data-plane-check.timer \
   /etc/systemd/system/hyboard.service \
   /etc/nginx/sites-available/hyboard \
   /etc/nginx/hyboard-client-ca.crt; do
@@ -87,6 +92,11 @@ if grep -Eq '^HYBOARD_TRAFFIC_STATS_ENABLED=1$' /etc/hyboard/hyboard.env 2>/dev/
   printf 'HyBoard Traffic Stats collection: enabled\n'
 else
   printf 'HyBoard Traffic Stats collection: disabled or unknown\n'
+fi
+if [[ -r /var/lib/hysteria-healthcheck/status.json ]]; then
+  python3 -c 'import json; d=json.load(open("/var/lib/hysteria-healthcheck/status.json")); print("Hysteria authenticated data plane: healthy" if d.get("healthy") else "Hysteria authenticated data plane: failed")' 2>/dev/null || true
+else
+  printf 'Hysteria authenticated data plane: not configured\n'
 fi
 
 python3 - <<'PY' 2>/dev/null || true
