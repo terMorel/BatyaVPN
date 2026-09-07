@@ -346,13 +346,17 @@ class MonitoringService:
                     "detail": f"Использовано {memory:.0f}% RAM.",
                 }
             )
-        if int(system.get("udp_errors", 0)) > 0:
+        udp_error_delta = int(system.get("udp_errors", 0))
+        if udp_error_delta >= 1000:
             alerts.append(
                 {
                     "key": "udp_errors",
                     "severity": "warning",
-                    "title": "Обнаружены ошибки UDP",
-                    "detail": "Проверьте потери пакетов и сетевые буферы VPS.",
+                    "title": "Существенные потери входящих UDP-пакетов",
+                    "detail": (
+                        f"За последний интервал ядро отбросило {udp_error_delta} "
+                        "UDP-пакетов; проверьте сеть и буферы VPS."
+                    ),
                 }
             )
         if not traffic_available:

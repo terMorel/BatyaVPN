@@ -17,12 +17,14 @@ class FakeBackend:
         tls: dict | None = None,
         certbot: str | None = None,
         data_plane: dict | None = None,
+        udp_errors: int = 0,
     ):
         self.active = active
         self.disk = disk
         self.tls = tls
         self.certbot = certbot
         self.data_plane = data_plane
+        self.udp_errors = udp_errors
 
     def status(self) -> dict:
         return {"service": "active" if self.active else "inactive", "udp443": self.active}
@@ -35,7 +37,7 @@ class FakeBackend:
             "load1": 0.1,
             "net_rx_bytes": 1000,
             "net_tx_bytes": 2000,
-            "udp_errors": 0,
+            "udp_errors": self.udp_errors,
             "services": {
                 "hysteria": "active" if self.active else "inactive",
                 "certbot": self.certbot,
@@ -237,3 +239,22 @@ def test_monitoring_alerts_after_confirmed_data_plane_failures(tmp_path):
     assert "hysteria_data_plane_failed" in {
         alert["key"] for alert in snapshot["alerts"]
     }
+
+
+@pytest.mark.parametrize(("udp_errors", "warns"), [(999, False), (1000, True)])
+def test_udp_alert_ignores_small_transient_deltas(tmp_path, udp_errors, warns):
+    db = Database(tmp_path / "monitor.db")
+    db.init()
+    backend = FakeBackend(udp_errors=0)
+    service = MonitoringService(
+        db,
+        backend,
+        FakeStats(),
+        FakeNotifier(),
+    )
+
+    service.collect()
+    backend.udp_errors = udp_errors
+    keys = {alert["key"] for alert in service.collect()["alerts"]}
+
+    assert ("udp_errors" in keys) is warns
