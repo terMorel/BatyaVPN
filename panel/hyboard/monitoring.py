@@ -173,8 +173,9 @@ class MonitoringService:
             current_system = system
             self.db.record_system(system, now)
             system = self.db.monitoring_summary()["system"] or {}
-            if "hysteria_tls" in current_system:
-                system["hysteria_tls"] = current_system["hysteria_tls"]
+            for transient_key in ("hysteria_tls", "hysteria_data_plane"):
+                if transient_key in current_system:
+                    system[transient_key] = current_system[transient_key]
         self.db.set_monitor_status("traffic", traffic.available, traffic.error or "", now)
         self.db.set_monitor_status(
             "system", not system_error, system_error or status_error, now
@@ -245,7 +246,7 @@ class MonitoringService:
                         "detail": tls.get("error") or "Сертификат истёк или ещё не действует.",
                     }
                 )
-            elif seconds_remaining <= 72 * 3600:
+            elif seconds_remaining <= 48 * 3600:
                 hours = max(0, seconds_remaining // 3600)
                 alerts.append(
                     {
@@ -265,6 +266,55 @@ class MonitoringService:
                             "Путь TLS не является обновляемой ссылкой Certbot; "
                             "следующее продление может не попасть в Hysteria2."
                         ),
+                    }
+                )
+        services = system.get("services", {})
+        if isinstance(services, dict) and services.get("certbot") not in {None, "active"}:
+            alerts.append(
+                {
+                    "key": "certbot_renewal_inactive",
+                    "severity": "warning",
+                    "title": "Автопродление TLS-сертификата не работает",
+                    "detail": "Системный таймер Certbot не активен.",
+                }
+            )
+        data_plane = system.get("hysteria_data_plane")
+        if isinstance(data_plane, dict) and data_plane:
+            if not data_plane.get("healthy"):
+                alerts.append(
+                    {
+                        "key": "hysteria_data_plane_failed",
+                        "severity": "critical",
+                        "title": "Трафик через Hysteria2 не проходит",
+                        "detail": data_plane.get("detail")
+                        or "Проверка TLS, авторизации и выхода в интернет завершилась ошибкой.",
+                    }
+                )
+            else:
+                try:
+                    checked_at = datetime.fromisoformat(str(data_plane.get("checked_at")))
+                    check_age = max(0, (now - checked_at).total_seconds())
+                except (TypeError, ValueError):
+                    check_age = self.probe_stale_seconds + 1
+                if check_age > self.probe_stale_seconds:
+                    alerts.append(
+                        {
+                            "key": "hysteria_data_plane_stale",
+                            "severity": "warning",
+                            "title": "Проверка трафика Hysteria2 не запускается",
+                            "detail": "Нет свежего результата сквозной проверки VPN.",
+                        }
+                    )
+            if (
+                isinstance(services, dict)
+                and services.get("hysteria-healthcheck") not in {None, "active"}
+            ):
+                alerts.append(
+                    {
+                        "key": "hysteria_healthcheck_inactive",
+                        "severity": "warning",
+                        "title": "Таймер сквозной проверки Hysteria2 не активен",
+                        "detail": "Автоматическая проверка VPN-трафика остановлена.",
                     }
                 )
         disk = float(system.get("disk_percent", 0))
@@ -344,14 +394,22 @@ class MonitoringService:
         active = {alert["key"]: alert for alert in alerts if alert["severity"] != "info"}
         previous = self.db.alert_states()
         for key, alert in active.items():
-            signature = f"{alert['severity']}:{alert['title']}:{alert['detail']}"
+            # Dynamic details (remaining hours, resource percentages) must not turn one
+            # incident into a stream of messages. A severity/title change is an escalation.
+            signature = f"{alert['severity']}:{alert['title']}"
             if previous.get(key, "") != signature:
-                self.notifier.send(
+                delivered = self.notifier.send(
                     f"HyBoard · {alert['severity'].upper()}\n{alert['title']}\n{alert['detail']}"
                 )
+                # When Telegram is configured, only acknowledge successful delivery.
+                # A transient API/network failure is retried on the next collection.
+                if self.notifier.enabled and not delivered:
+                    continue
             self.db.set_alert_state(key, signature, now)
         for key in set(previous) - set(active):
-            self.notifier.send(f"HyBoard · RECOVERED\nПроблема устранена: {key}")
+            delivered = self.notifier.send(f"HyBoard · RECOVERED\nПроблема устранена: {key}")
+            if self.notifier.enabled and not delivered:
+                continue
             self.db.delete_alert_state(key)
 
 

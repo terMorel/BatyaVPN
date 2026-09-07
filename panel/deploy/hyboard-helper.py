@@ -16,6 +16,7 @@ HY_ACCESS = Path("/usr/local/sbin/hy-access")
 USERS = Path("/etc/hysteria/users.json")
 ACCESS_DIR = Path("/root/hysteria-access")
 HYSTERIA_CONFIG = Path("/etc/hysteria/config.yaml")
+HYSTERIA_HEALTH_STATUS = Path("/var/lib/hysteria-healthcheck/status.json")
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 URI = re.compile(r"hysteria2://[^\s`'\"]+")
 TLS_CERT = re.compile(
@@ -223,6 +224,36 @@ def hysteria_tls_status() -> dict:
     }
 
 
+def hysteria_data_plane_status() -> dict:
+    """Read only the secret-free fields written by the authenticated tunnel check."""
+    try:
+        payload = json.loads(HYSTERIA_HEALTH_STATUS.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return {
+            "healthy": False,
+            "checked_at": None,
+            "consecutive_failures": 0,
+            "detail": "Data-plane health status cannot be read",
+        }
+    if not isinstance(payload, dict):
+        return {
+            "healthy": False,
+            "checked_at": None,
+            "consecutive_failures": 0,
+            "detail": "Data-plane health status is malformed",
+        }
+    return {
+        "healthy": bool(payload.get("healthy")),
+        "last_attempt_ok": bool(payload.get("last_attempt_ok")),
+        "consecutive_failures": max(0, int(payload.get("consecutive_failures", 0))),
+        "checked_at": payload.get("checked_at"),
+        "last_success": payload.get("last_success"),
+        "detail": str(payload.get("detail", ""))[:180],
+    }
+
+
 def monitoring() -> None:
     disk = shutil.disk_usage("/")
     rx, tx = network_bytes()
@@ -241,11 +272,19 @@ def monitoring() -> None:
             "net_tx_bytes": tx,
             "udp_errors": udp_errors(),
             "hysteria_tls": hysteria_tls_status(),
+            "hysteria_data_plane": hysteria_data_plane_status(),
             "services": {
                 "hysteria": service_state("hysteria-server.service", "hysteria.service"),
                 "hyboard": service_state("hyboard.service"),
                 "nginx": service_state("nginx.service"),
                 "x-ui": service_state("x-ui.service"),
+                "certbot": service_state(
+                    "snap.certbot.renew.timer", "certbot.timer"
+                ),
+                "hysteria-healthcheck": service_state(
+                    "hysteria-data-plane-check.timer",
+                    "hysteria-healthcheck.timer",
+                ),
             },
         }
     )

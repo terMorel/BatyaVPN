@@ -100,6 +100,10 @@ for path in \
   /root/hysteria-access \
   /usr/local/sbin/hy-access \
   /etc/systemd/system/hysteria-server.service \
+  /usr/local/sbin/hysteria-data-plane-check \
+  /etc/default/hysteria-healthcheck \
+  /etc/systemd/system/hysteria-data-plane-check.service \
+  /etc/systemd/system/hysteria-data-plane-check.timer \
   /etc/hyboard \
   /usr/local/libexec/hyboard-helper \
   /usr/local/libexec/hyboard-helperd \
