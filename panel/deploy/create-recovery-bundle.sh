@@ -101,6 +101,8 @@ for path in \
   /usr/local/sbin/hy-access \
   /etc/systemd/system/hysteria-server.service \
   /usr/local/sbin/hysteria-data-plane-check \
+  /usr/local/sbin/hyboard-probe-report \
+  /root/windows-hysteria-probe.yaml \
   /etc/default/hysteria-healthcheck \
   /etc/systemd/system/hysteria-data-plane-check.service \
   /etc/systemd/system/hysteria-data-plane-check.timer \
