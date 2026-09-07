@@ -71,6 +71,7 @@ for path in \
   /etc/hysteria/users.json \
   /usr/local/sbin/hy-access \
   /usr/local/sbin/hysteria-data-plane-check \
+  /usr/local/sbin/hyboard-probe-report \
   /etc/hyboard/hyboard.env \
   /var/lib/hyboard/hyboard.db \
   /etc/systemd/system/hysteria-server.service \

@@ -295,8 +295,8 @@ class MonitoringService:
                     checked_at = datetime.fromisoformat(str(data_plane.get("checked_at")))
                     check_age = max(0, (now - checked_at).total_seconds())
                 except (TypeError, ValueError):
-                    check_age = self.probe_stale_seconds + 1
-                if check_age > self.probe_stale_seconds:
+                    check_age = 15 * 60 + 1
+                if check_age > 15 * 60:
                     alerts.append(
                         {
                             "key": "hysteria_data_plane_stale",
